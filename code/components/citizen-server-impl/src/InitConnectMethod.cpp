@@ -250,6 +250,15 @@ static InitFunction initFunction([]()
 				cb(json(nullptr));
 			};
 
+			// Require GLG modified client
+			auto customIt = postMap.find("custom");
+
+			if (customIt == postMap.end() || customIt->second != "glg")
+			{
+				sendError("Green Leaf Gaming requires the use of the GLG Launcher to provide the best possible experience, visit greenleafrp.com for details and join today!");
+				return;
+			}
+
 			auto nameIt = postMap.find("name");
 			auto guidIt = postMap.find("guid");
 

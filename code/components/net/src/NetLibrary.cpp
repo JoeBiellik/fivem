@@ -614,6 +614,7 @@ void NetLibrary::ConnectToServer(const net::PeerAddress& address)
 	postMap["method"] = "initConnect";
 	postMap["name"] = GetPlayerName();
 	postMap["protocol"] = va("%d", NETWORK_PROTOCOL);
+	postMap["custom"] = "glg";
 
 	static std::function<void()> performRequest;
 
