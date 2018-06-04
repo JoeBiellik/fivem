@@ -76,7 +76,7 @@ static bool VerifyTicket(const std::string& guid, const std::string& ticket)
 	}
 
 	// check the GUID
-	uint64_t realGuid = std::stoull(guid);
+	uint64_t realGuid = strtoull(guid.c_str(), nullptr, 10);
 
 	if (realGuid != ticketGuid)
 	{
@@ -405,19 +405,29 @@ static InitFunction initFunction([]()
 				client->SetData("deferralPtr", std::weak_ptr<fx::ClientDeferral>(*deferrals));
 
 				// *copy* the callback into a *shared* reference
-				auto cbRef = std::make_shared<std::unique_ptr<std::decay_t<decltype(cb)>>>(std::make_unique<std::decay_t<decltype(cb)>>(cb));
+				auto cbRef = std::make_shared<std::shared_ptr<std::decay_t<decltype(cb)>>>(std::make_shared<std::decay_t<decltype(cb)>>(cb));
 
 				(*deferrals)->SetMessageCallback([deferrals, cbRef](const std::string& message)
 				{
-					(**cbRef)(json::object({ { "defer", true }, { "message", message }, { "deferVersion", 2 } }));
+					auto ref1 = *cbRef;
+
+					if (ref1)
+					{
+						(*ref1)(json::object({ { "defer", true }, { "message", message }, { "deferVersion", 2 } }));
+					}
 				});
 
 				(*deferrals)->SetResolveCallback([data, deferrals, cbRef, allowClient]()
 				{
 					allowClient();
 
-					(**cbRef)(data);
-					(**cbRef)(json(nullptr));
+					auto ref1 = *cbRef;
+
+					if (ref1)
+					{
+						(**cbRef)(data);
+						(**cbRef)(json(nullptr));
+					}
 
 					*cbRef = nullptr;
 					*deferrals = nullptr;
@@ -427,8 +437,13 @@ static InitFunction initFunction([]()
 				{
 					clientRegistry->RemoveClient(client);
 
-					(**cbRef)(json::object({ { "error", message} }));
-					(**cbRef)(json(nullptr));
+					auto ref1 = *cbRef;
+
+					if (ref1)
+					{
+						(**cbRef)(json::object({ { "error", message} }));
+						(**cbRef)(json(nullptr));
+					}
 
 					*cbRef = nullptr;
 					*deferrals = nullptr;
@@ -460,7 +475,15 @@ static InitFunction initFunction([]()
 					return;
 				}
 
-				if (!(*deferrals)->IsDeferred())
+				// was the deferral already completed/canceled this frame? if so, just don't respond at all
+				auto deferralsRef = *deferrals;
+
+				if (!deferralsRef)
+				{
+					return;
+				}
+
+				if (!deferralsRef->IsDeferred())
 				{
 					allowClient();
 

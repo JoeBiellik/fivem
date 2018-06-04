@@ -21,7 +21,8 @@ extern "C"
 };
 
 MumbleAudioInput::MumbleAudioInput()
-	: m_likelihood(MumbleVoiceLikelihood::ModerateLikelihood), m_ptt(false), m_mode(MumbleActivationMode::VoiceActivity), m_deviceId(""), m_avr(nullptr), m_opus(nullptr), m_apm(nullptr)
+	: m_likelihood(MumbleVoiceLikelihood::ModerateLikelihood), m_ptt(false), m_mode(MumbleActivationMode::VoiceActivity), m_deviceId(""), m_audioLevel(0.0f),
+	  m_avr(nullptr), m_opus(nullptr), m_apm(nullptr), m_isTalking(false)
 {
 
 }
@@ -85,6 +86,10 @@ void MumbleAudioInput::ThreadFunc()
 
 	InitializeAudioDevice();
 
+	// save settings that occurred during creation now, since they might change while we wait to activate
+	MumbleVoiceLikelihood lastLikelihood = m_likelihood;
+	std::string lastDevice = m_deviceId;
+
 	// wait for the activation signal
 	WaitForSingleObject(m_startEvent, INFINITE);
 
@@ -95,8 +100,6 @@ void MumbleAudioInput::ThreadFunc()
 	}
 
 	bool recreateDevice = false;
-	MumbleVoiceLikelihood lastLikelihood = m_likelihood;
-	std::string lastDevice = m_deviceId;
 
 	while (true)
 	{
@@ -146,11 +149,15 @@ void MumbleAudioInput::HandleData(const uint8_t* buffer, size_t numBytes)
 {
 	if (m_mode == MumbleActivationMode::Disabled)
 	{
+		m_isTalking = false;
+		m_audioLevel = 0.0f;
 		return;
 	}
 
 	if (m_mode == MumbleActivationMode::PushToTalk && !m_ptt)
 	{
+		m_isTalking = false;
+		m_audioLevel = 0.0f;
 		return;
 	}
 
@@ -198,10 +205,17 @@ void MumbleAudioInput::HandleData(const uint8_t* buffer, size_t numBytes)
 
 		m_apm->ProcessStream(&frame);
 
+		auto db = (float)-(m_apm->level_estimator()->RMS());
+		m_audioLevel = XAudio2DecibelsToAmplitudeRatio(db);
+
 		if (m_mode == MumbleActivationMode::VoiceActivity && !m_apm->voice_detection()->stream_has_voice())
 		{
+			m_isTalking = false;
+			m_audioLevel = 0.0f;
 			continue;
 		}
+
+		m_isTalking = true;
 
 		memcpy(m_resampledBytes, frame.data_, 480 * sizeof(int16_t));
 
@@ -370,12 +384,14 @@ void MumbleAudioInput::InitializeAudioDevice()
 	}
 
 	// create
+	HRESULT hr = 0;
 	ComPtr<IMMDevice> device;
 
 	if (m_deviceId.empty())
 	{
-		if (FAILED(m_mmDeviceEnumerator->GetDefaultAudioEndpoint(eCapture, eCommunications, device.ReleaseAndGetAddressOf())))
+		if (FAILED(hr = m_mmDeviceEnumerator->GetDefaultAudioEndpoint(eCapture, eCommunications, device.ReleaseAndGetAddressOf())))
 		{
+			trace(__FUNCTION__ ": Obtaining default audio endpoint failed. HR = 0x%08x\n", hr);
 			return;
 		}
 	}
@@ -385,12 +401,14 @@ void MumbleAudioInput::InitializeAudioDevice()
 
 		if (!device)
 		{
+			trace(__FUNCTION__ ": Obtaining audio device for %s failed.\n", m_deviceId);
 			return;
 		}
 	}
 
-	if (FAILED(device->Activate(IID_IAudioClient, CLSCTX_INPROC_SERVER, nullptr, (void**)m_audioClient.ReleaseAndGetAddressOf())))
+	if (FAILED(hr = device->Activate(IID_IAudioClient, CLSCTX_INPROC_SERVER, nullptr, (void**)m_audioClient.ReleaseAndGetAddressOf())))
 	{
+		trace(__FUNCTION__ ": Activating IAudioClient for capture device failed. HR = %08x\n", hr);
 		return;
 	}
 
@@ -398,8 +416,9 @@ void MumbleAudioInput::InitializeAudioDevice()
 
 	m_audioClient->GetMixFormat(&waveFormat);
 
-	if (FAILED(m_audioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, 20 * 10000, 0, waveFormat, nullptr)))
+	if (FAILED(hr = m_audioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, 20 * 10000, 0, waveFormat, nullptr)))
 	{
+		trace(__FUNCTION__ ": Initializing IAudioClient for capture device failed. HR = %08x\n", hr);
 		return;
 	}
 
@@ -407,8 +426,9 @@ void MumbleAudioInput::InitializeAudioDevice()
 
 	m_audioClient->GetBufferSize(&bufferSize);
 
-	if (FAILED(m_audioClient->GetService(IID_IAudioCaptureClient, (void**)m_audioCaptureClient.ReleaseAndGetAddressOf())))
+	if (FAILED(hr = m_audioClient->GetService(IID_IAudioCaptureClient, (void**)m_audioCaptureClient.ReleaseAndGetAddressOf())))
 	{
+		trace(__FUNCTION__ ": Initializing IAudioCaptureClient for capture device failed. HR = %08x\n", hr);
 		return;
 	}
 
@@ -486,6 +506,7 @@ void MumbleAudioInput::InitializeAudioDevice()
 	m_apm->high_pass_filter()->Enable(true);
 	m_apm->echo_cancellation()->Enable(false);
 	m_apm->noise_suppression()->Enable(true);
+	m_apm->level_estimator()->Enable(true);
 	m_apm->voice_detection()->set_likelihood(ConvertLikelihood(m_likelihood));
 	m_apm->voice_detection()->set_frame_size_ms(10);
 	m_apm->voice_detection()->Enable(true);
@@ -495,6 +516,8 @@ void MumbleAudioInput::InitializeAudioDevice()
 	m_apm->gain_control()->set_compression_gain_db(9);
 	m_apm->gain_control()->enable_limiter(true);
 	m_apm->gain_control()->Enable(true);
+
+	trace(__FUNCTION__ ": Initialized audio capture device.\n");
 }
 
 void MumbleAudioInput::Enable()

@@ -10,9 +10,12 @@
 #include <concurrent_unordered_map.h>
 
 #include <map>
+#include <mutex>
 #include <thread>
 
 #include <wrl.h>
+
+#define XAUDIO2_HELPER_FUNCTIONS
 #include <xaudio2.h>
 #include <x3daudio.h>
 
@@ -64,7 +67,9 @@ private:
 		float volume;
 		float position[3];
 		bool isTalking;
+		bool isAudible;
 		OpusDecoder* opus;
+		uint32_t lastTime;
 
 		ClientAudioState();
 
@@ -83,12 +88,19 @@ private:
 private:
 	WRL::ComPtr<IXAudio2> m_xa2;
 	IXAudio2MasteringVoice* m_masteringVoice;
+	IXAudio2SubmixVoice* m_submixVoice;
 
 	WRL::ComPtr<IMMDeviceEnumerator> m_mmDeviceEnumerator;
 
 	concurrency::concurrent_unordered_map<uint32_t, std::shared_ptr<ClientAudioState>> m_clients;
 
 	std::thread m_thread;
+
+	bool m_initialized;
+
+	std::mutex m_initializeMutex;
+
+	std::condition_variable m_initializeVar;
 
 	MumbleClient* m_client;
 
@@ -99,6 +111,10 @@ private:
 	X3DAUDIO_HANDLE m_x3da;
 
 	X3DAUDIO_LISTENER m_listener;
+
+	DirectX::XMFLOAT3 m_lastPosition;
+
+	uint32_t m_lastMatrixTime;
 
 	float m_distance;
 

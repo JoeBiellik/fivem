@@ -262,7 +262,7 @@ if (!$DontBuild)
         throw "Failed to build the code."
     }
 
-    if (($env:COMPUTERNAME -eq "BUILDVM") -and (!$IsServer)) {
+    if ((($env:COMPUTERNAME -eq "BUILDVM") -or ($env:COMPUTERNAME -eq "AVALON")) -and (!$IsServer)) {
         Start-Process -NoNewWindow powershell -ArgumentList "-ExecutionPolicy unrestricted .\tools\ci\dump_symbols.ps1 -BinRoot $BinRoot"
     }
 }
@@ -382,7 +382,7 @@ if (!$DontUpload) {
 
     $Branch = $UploadBranch
 
-    $env:Path += ";C:\msys64\usr\bin"
+    $env:Path = "C:\msys64\usr\bin;$env:Path"
 
     New-Item -ItemType Directory -Force $WorkDir\upload\$Branch\bootstrap | Out-Null
     New-Item -ItemType Directory -Force $WorkDir\upload\$Branch\content | Out-Null

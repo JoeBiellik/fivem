@@ -63,7 +63,11 @@ concurrency::task<MumbleConnectionInfo*> MumbleClient::ConnectAsync(const net::P
 
 concurrency::task<void> MumbleClient::DisconnectAsync()
 {
-	m_tlsClient->close();
+	if (m_tlsClient)
+	{
+		m_tlsClient->close();
+	}
+
 	m_connectionInfo = {};
 
 	return concurrency::task_from_result();
@@ -146,6 +150,11 @@ void MumbleClient::SetAudioDistance(float distance)
 	m_audioOutput.SetDistance(distance);
 }
 
+float MumbleClient::GetInputAudioLevel()
+{
+	return m_audioInput.GetAudioLevel();
+}
+
 void MumbleClient::GetTalkers(std::vector<std::string>* referenceIds)
 {
 	referenceIds->clear();
@@ -158,6 +167,12 @@ void MumbleClient::GetTalkers(std::vector<std::string>* referenceIds)
 		auto user = m_state.GetUser(session);
 
 		referenceIds->push_back(ToNarrow(user->GetName()));
+	}
+
+	// local talker talking?
+	if (m_audioInput.IsTalking())
+	{
+		referenceIds->push_back(ToNarrow(m_state.GetUsername()));
 	}
 }
 

@@ -12,6 +12,9 @@
 #include <PacketDataStream.h>
 #include <MumbleClientImpl.h>
 #include <MumbleClientState.h>
+#include <mmsystem.h>
+
+#include <xaudio2fx.h>
 
 #include <Error.h>
 
@@ -174,18 +177,22 @@ public:
 
 void MumbleAudioOutput::Initialize()
 {
+	m_initialized = false;
 	m_distance = FLT_MAX;
 	m_volume = 1.0f;
 	m_masteringVoice = nullptr;
+	m_submixVoice = nullptr;
 	m_thread = std::thread([this] { ThreadFunc(); });
 }
 
 MumbleAudioOutput::ClientAudioState::ClientAudioState()
-	: volume(1.0f), sequence(0), voice(nullptr), opus(nullptr), isTalking(false)
+	: volume(1.0f), sequence(0), voice(nullptr), opus(nullptr), isTalking(false), isAudible(true)
 {
 	position[0] = 0.0f;
 	position[1] = 0.0f;
 	position[2] = 0.0f;
+
+	lastTime = timeGetTime();
 }
 
 MumbleAudioOutput::ClientAudioState::~ClientAudioState()
@@ -207,7 +214,7 @@ void MumbleAudioOutput::ClientAudioState::OnBufferEnd(void* cxt)
 {
 	auto buffer = reinterpret_cast<int16_t*>(cxt);
 
-	delete[] buffer;
+	_aligned_free(buffer);
 
 	XAUDIO2_VOICE_STATE vs;
 	voice->GetState(&vs);
@@ -220,9 +227,13 @@ void MumbleAudioOutput::ClientAudioState::OnBufferEnd(void* cxt)
 
 void MumbleAudioOutput::HandleClientConnect(const MumbleUser& user)
 {
-	while (!m_masteringVoice)
 	{
-		Sleep(1);
+		std::unique_lock<std::mutex> initLock(m_initializeMutex);
+
+		if (!m_initialized)
+		{
+			m_initializeVar.wait(initLock);
+		}
 	}
 
 	WAVEFORMATEX format;
@@ -236,8 +247,28 @@ void MumbleAudioOutput::HandleClientConnect(const MumbleUser& user)
 
 	auto state = std::make_shared<ClientAudioState>();
 
+	auto xa2 = m_xa2;
+
+	XAUDIO2_SEND_DESCRIPTOR sendDescriptors[2];
+	sendDescriptors[0].Flags = XAUDIO2_SEND_USEFILTER;
+	sendDescriptors[0].pOutputVoice = m_masteringVoice;
+
+	if (m_submixVoice)
+	{
+		sendDescriptors[1].Flags = XAUDIO2_SEND_USEFILTER;
+		sendDescriptors[1].pOutputVoice = m_submixVoice;
+	}
+
+	const XAUDIO2_VOICE_SENDS sendList = { (m_submixVoice) ? 2 : 1, sendDescriptors };
+
 	IXAudio2SourceVoice* voice = nullptr;
-	m_xa2->CreateSourceVoice(&voice, &format, 0, 2.0f, state.get());
+	HRESULT hr = xa2->CreateSourceVoice(&voice, &format, 0, 2.0f, state.get(), &sendList);
+
+	if (FAILED(hr))
+	{
+		trace("CreateSourceVoice failed - HR = %08x\n", hr);
+		return;
+	}
 
 	voice->Start();
 
@@ -265,7 +296,7 @@ void MumbleAudioOutput::HandleClientVoiceData(const MumbleUser& user, uint64_t s
 
 	client->sequence = sequence;
 
-	auto voiceBuffer = new int16_t[5760 * 1];
+	auto voiceBuffer = (int16_t*)_aligned_malloc(5760 * 1 * sizeof(int16_t), 16);
 	int len = opus_decode(client->opus, data, size, voiceBuffer, 5760, 0);
 
 	if (len >= 0)
@@ -283,7 +314,7 @@ void MumbleAudioOutput::HandleClientVoiceData(const MumbleUser& user, uint64_t s
 
 		client->voice->SubmitSourceBuffer(&bufferData);
 
-		client->isTalking = true;
+		client->isTalking = client->isAudible;
 	}
 	else
 	{
@@ -291,18 +322,55 @@ void MumbleAudioOutput::HandleClientVoiceData(const MumbleUser& user, uint64_t s
 	}
 }
 
+static const X3DAUDIO_DISTANCE_CURVE_POINT Emitter_LFE_CurvePoints[3] = { 0.0f, 1.0f, 0.25f, 0.0f, 1.0f, 0.0f };
+static const X3DAUDIO_DISTANCE_CURVE       Emitter_LFE_Curve = { (X3DAUDIO_DISTANCE_CURVE_POINT*)&Emitter_LFE_CurvePoints[0], 3 };
+
+static const X3DAUDIO_DISTANCE_CURVE_POINT Emitter_Reverb_CurvePoints[3] = { 0.0f, 0.5f, 0.75f, 1.0f, 1.0f, 0.0f };
+static const X3DAUDIO_DISTANCE_CURVE       Emitter_Reverb_Curve = { (X3DAUDIO_DISTANCE_CURVE_POINT*)&Emitter_Reverb_CurvePoints[0], 3 };
+
+static const X3DAUDIO_CONE Listener_DirectionalCone = { X3DAUDIO_PI*5.0f / 6.0f, X3DAUDIO_PI*11.0f / 6.0f, 1.0f, 0.75f, 0.0f, 0.25f, 0.708f, 1.0f };
+
 void MumbleAudioOutput::HandleClientPosition(const MumbleUser& user, float position[3])
 {
+	using namespace DirectX;
+
 	auto client = m_clients[user.GetSessionId()];
 
 	if (client)
 	{
+		auto lastPosition = DirectX::XMFLOAT3(client->position[0], client->position[1], client->position[2]);
+
 		client->position[0] = position[0];
 		client->position[1] = position[1];
 		client->position[2] = position[2];
 
 		if ((position[0] != 0.0f || position[1] != 0.0f || position[2] != 0.0f) && m_x3daCalculate)
 		{
+			X3DAUDIO_EMITTER emitter = { 0 };
+
+			if (lastPosition.x != 0.0f || lastPosition.y != 0.0f || lastPosition.z != 0.0f)
+			{
+				auto curPosition = DirectX::XMFLOAT3(client->position);
+
+				auto v1 = DirectX::XMLoadFloat3(&curPosition);
+				auto v2 = DirectX::XMVectorSet(lastPosition.x, lastPosition.y, lastPosition.z, 0.f);
+
+				auto dT = (client->lastTime - timeGetTime());
+
+				if (dT > 0)
+				{
+					auto eVelocity = (v1 - v2) / (dT / 1000.0f);
+
+					XMFLOAT3 tmp;
+					XMStoreFloat3(&tmp, eVelocity);
+					emitter.Velocity.x = tmp.x;
+					emitter.Velocity.y = tmp.y;
+					emitter.Velocity.z = tmp.z;
+				}
+
+				client->lastTime = timeGetTime();
+			}
+
 			float coeffs[2] = { 0 };
 
 			X3DAUDIO_DSP_SETTINGS dsp = { 0 };
@@ -310,30 +378,100 @@ void MumbleAudioOutput::HandleClientPosition(const MumbleUser& user, float posit
 			dsp.DstChannelCount = 2;
 			dsp.pMatrixCoefficients = coeffs;
 
-			X3DAUDIO_EMITTER emitter = { 0 };
 			emitter.OrientFront = DirectX::XMFLOAT3(0.0f, 0.0f, 1.0f);
 			emitter.OrientTop = DirectX::XMFLOAT3(0.0f, 1.0f, 0.0f);
 			emitter.Position = DirectX::XMFLOAT3(position);
 			emitter.ChannelCount = 1;
-			//emitter.CurveDistanceScaler = 50.0f;
+			emitter.pVolumeCurve = const_cast<X3DAUDIO_DISTANCE_CURVE*>(&X3DAudioDefault_LinearCurve);
 			emitter.CurveDistanceScaler = m_distance;
 
-			m_x3daCalculate(m_x3da, &m_listener, &emitter, X3DAUDIO_CALCULATE_MATRIX | X3DAUDIO_CALCULATE_DOPPLER | X3DAUDIO_CALCULATE_LPF_DIRECT | X3DAUDIO_CALCULATE_REVERB, &dsp);
+			emitter.InnerRadius = 2.0f;
+			emitter.InnerRadiusAngle = X3DAUDIO_PI / 4.0f;
+
+			emitter.pLFECurve = (X3DAUDIO_DISTANCE_CURVE*)&Emitter_LFE_Curve;
+			emitter.pLPFDirectCurve = nullptr; // use default curve
+			emitter.pLPFReverbCurve = nullptr; // use default curve
+			emitter.pReverbCurve = (X3DAUDIO_DISTANCE_CURVE*)&Emitter_Reverb_Curve;
+			emitter.DopplerScaler = 1.0f;
+
+			m_x3daCalculate(m_x3da, &m_listener, &emitter, X3DAUDIO_CALCULATE_MATRIX | X3DAUDIO_CALCULATE_DOPPLER
+				| X3DAUDIO_CALCULATE_LPF_DIRECT | X3DAUDIO_CALCULATE_LPF_REVERB
+				| X3DAUDIO_CALCULATE_REVERB, &dsp);
+
+			if (!isnan(dsp.DopplerFactor))
+			{
+				client->voice->SetFrequencyRatio(dsp.DopplerFactor);
+			}
 
 			client->voice->SetOutputMatrix(m_masteringVoice, 1, 2, dsp.pMatrixCoefficients);
+
+			if (m_submixVoice)
+			{
+				client->voice->SetOutputMatrix(m_submixVoice, 1, 1, &dsp.ReverbLevel);
+			}
+
+			XAUDIO2_FILTER_PARAMETERS FilterParametersDirect = { LowPassFilter, 2.0f * sinf(X3DAUDIO_PI / 6.0f * dsp.LPFDirectCoefficient), 1.0f };
+			client->voice->SetOutputFilterParameters(m_masteringVoice, &FilterParametersDirect);
+			XAUDIO2_FILTER_PARAMETERS FilterParametersReverb = { LowPassFilter, 2.0f * sinf(X3DAUDIO_PI / 6.0f * dsp.LPFReverbCoefficient), 1.0f };
+			client->voice->SetOutputFilterParameters(m_submixVoice, &FilterParametersReverb);
+
+			client->isAudible = (dsp.pMatrixCoefficients[0] > 0.1f || dsp.pMatrixCoefficients[1] > 0.1f);
 		}
 		else
 		{
+			// reset matrix
 			float matrix[2] = { 1.f, 1.f };
 			client->voice->SetOutputMatrix(m_masteringVoice, 1, 2, matrix);
+
+			// disable submix voice
+			matrix[0] = 0.0f;
+
+			if (m_submixVoice)
+			{
+				client->voice->SetOutputMatrix(m_submixVoice, 1, 1, matrix);
+			}
+
+			// reset frequency ratio
+			client->voice->SetFrequencyRatio(1.0f);
+
+			client->isAudible = true;
 		}
 	}
 }
 
 void MumbleAudioOutput::SetMatrix(float position[3], float front[3], float up[3])
 {
+	using namespace DirectX;
+
+	m_listener.pCone = (X3DAUDIO_CONE*)&Listener_DirectionalCone;
+
 	m_listener.OrientFront = DirectX::XMFLOAT3(front);
 	m_listener.OrientTop = DirectX::XMFLOAT3(up);
+
+	auto curPosition = DirectX::XMFLOAT3(position);
+
+	if (m_listener.Position.x != 0.0f || m_listener.Position.y != 0.0f || m_listener.Position.z != 0.0f)
+	{
+		auto dT = (m_lastMatrixTime - timeGetTime());
+
+		if (dT > 0)
+		{
+			auto v1 = DirectX::XMLoadFloat3(&curPosition);
+			auto v2 = DirectX::XMVectorSet(m_lastPosition.x, m_lastPosition.y, m_lastPosition.z, 0.f);
+
+			auto eVelocity = (v1 - v2) / (dT / 1000.0f);
+
+			XMFLOAT3 tmp;
+			XMStoreFloat3(&tmp, eVelocity);
+			m_listener.Velocity.x = tmp.x;
+			m_listener.Velocity.y = tmp.y;
+			m_listener.Velocity.z = tmp.z;
+
+			m_lastPosition = DirectX::XMFLOAT3(position);
+			m_lastMatrixTime = timeGetTime();
+		}
+	}
+
 	m_listener.Position = DirectX::XMFLOAT3(position);
 }
 
@@ -385,6 +523,12 @@ void MumbleAudioOutput::SetAudioDevice(const std::string& deviceId)
 	}
 
 	m_deviceGuid = deviceId;
+
+	// mark as uninitialized
+	{
+		std::unique_lock<std::mutex> lock(m_initializeMutex);
+		m_initialized = false;
+	}
 
 	// save IDs
 	std::vector<uint32_t> m_ids;
@@ -442,8 +586,15 @@ static bool SafeCallX3DA(decltype(&X3DAudioInitialize) func, UINT32 SpeakerChann
 
 WRL::ComPtr<IMMDevice> GetMMDeviceFromGUID(bool input, const std::string& guid);
 
+DEFINE_GUID(CLSID_AudioReverb, 0x6a93130e, 0x1d53, 0x41d1, 0xa9, 0xcf, 0xe7, 0x58, 0x80, 0x0b, 0xb1, 0x79);
+
 void MumbleAudioOutput::InitializeAudioDevice()
 {
+	{
+		std::unique_lock<std::mutex> lock(m_initializeMutex);
+		m_initialized = false;
+	}
+
 	ComPtr<IMMDevice> device;
 
 	if (m_deviceGuid.empty())
@@ -464,6 +615,7 @@ void MumbleAudioOutput::InitializeAudioDevice()
 	}
 
 	auto xa2Dll = LoadLibraryExW(L"XAudio2_8.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+	decltype(&CreateAudioReverb) _CreateAudioReverb;
 
 	if (xa2Dll)
 	{
@@ -473,6 +625,8 @@ void MumbleAudioOutput::InitializeAudioDevice()
 		{
 			return;
 		}
+
+		_CreateAudioReverb = (decltype(&CreateAudioReverb))GetProcAddress(xa2Dll, "CreateAudioReverb");
 	}
 	else
 	{
@@ -485,6 +639,12 @@ void MumbleAudioOutput::InitializeAudioDevice()
 		}
 
 		m_xa2 = WRL::Make<XAudio2DownlevelWrap>();
+
+		_CreateAudioReverb = [](IUnknown** ppApo)
+		{
+			return CoCreateInstance(CLSID_AudioReverb,
+				NULL, CLSCTX_INPROC_SERVER, IID_IUnknown, (void**)ppApo);
+		};
 	}
 
 	XAUDIO2_DEBUG_CONFIGURATION cfg = { 0 };
@@ -513,6 +673,40 @@ void MumbleAudioOutput::InitializeAudioDevice()
 
 	m_masteringVoice->SetVolume(m_volume);
 
+	if (IsWindows8Point1OrGreater())
+	{
+		IUnknown* reverbEffect;
+
+		HRESULT hr;
+
+		UINT32 rflags = 0;
+		if (FAILED(hr = _CreateAudioReverb(&reverbEffect)))
+		{
+			return;
+		}
+
+		//
+		// Create a submix voice
+		//
+
+		XAUDIO2_EFFECT_DESCRIPTOR effects[] = { { reverbEffect, TRUE, 1 } };
+		XAUDIO2_EFFECT_CHAIN effectChain = { 1, effects };
+
+		if (FAILED(hr = m_xa2->CreateSubmixVoice(&m_submixVoice, 1,
+			48000, 0, 0,
+			nullptr, &effectChain)))
+		{
+			return;
+		}
+
+		// Set default FX params
+		XAUDIO2FX_REVERB_PARAMETERS native;
+		XAUDIO2FX_REVERB_I3DL2_PARAMETERS preset = XAUDIO2FX_I3DL2_PRESET_DEFAULT;
+
+		ReverbConvertI3DL2ToNative(&preset, &native);
+		m_submixVoice->SetEffectParameters(0, &native, sizeof(native));
+	}
+
 	auto x3aDll = (HMODULE)LoadLibraryExW(L"XAudio2_8.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
 
 	if (!x3aDll)
@@ -533,7 +727,7 @@ void MumbleAudioOutput::InitializeAudioDevice()
 			if (SafeCallX3DA(_X3DAudioInitialize, channelMask, X3DAUDIO_SPEED_OF_SOUND, m_x3da))
 			{
 				memset(&m_listener, 0, sizeof(m_listener));
-				m_listener.Position = DirectX::XMFLOAT3(100.0f, 0.0f, 0.0f);
+				m_listener.Position = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
 				m_listener.OrientFront = DirectX::XMFLOAT3(0.0f, 0.0f, 1.0f);
 				m_listener.OrientTop = DirectX::XMFLOAT3(0.0f, 1.0f, 0.0f);
 
@@ -556,5 +750,12 @@ void MumbleAudioOutput::InitializeAudioDevice()
 	else
 	{
 		m_x3daCalculate = nullptr;
+	}
+
+	{
+		std::unique_lock<std::mutex> lock(m_initializeMutex);
+		m_initialized = true;
+
+		m_initializeVar.notify_all();
 	}
 }

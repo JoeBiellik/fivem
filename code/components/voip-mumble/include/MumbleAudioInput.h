@@ -73,6 +73,8 @@ private:
 
 	MumbleVoiceLikelihood m_likelihood;
 
+	bool m_isTalking;
+
 	bool m_ptt;
 
 	std::string m_deviceId;
@@ -80,6 +82,8 @@ private:
 	float m_positionX;
 	float m_positionY;
 	float m_positionZ;
+
+	float m_audioLevel;
 
 private:
 	static void ThreadStart(MumbleAudioInput* instance);
@@ -112,6 +116,16 @@ public:
 	void SetPTTButtonState(bool pressed);
 
 	void SetAudioDevice(const std::string& dsoundDeviceId);
+
+	inline bool IsTalking()
+	{
+		return m_isTalking;
+	}
+
+	inline float GetAudioLevel()
+	{
+		return m_audioLevel;
+	}
 
 	inline void SetPosition(float position[3])
 	{

@@ -63,7 +63,9 @@ void MumbleVoice_BindNetLibrary(NetLibrary* library)
 						{
 							if (success)
 							{
+#ifndef _DEBUG
 								if (std::string(data, size).find("yes") != std::string::npos)
+#endif
 								{
 									trace("Server policy - Mumble allowed: yes\n");
 
@@ -220,7 +222,7 @@ static void Mumble_RunFrame()
 	actorPos[1] = g_actorPos[2];
 	actorPos[2] = g_actorPos[1];
 
-	g_mumbleClient->SetListenerMatrix(cameraPos, cameraFront, cameraTop);
+	g_mumbleClient->SetListenerMatrix(actorPos, cameraFront, cameraTop);
 	g_mumbleClient->SetActorPosition(actorPos);
 
 	auto likelihoodValue = g_preferenceArray[PREF_VOICE_MIC_SENSITIVITY];
@@ -295,13 +297,19 @@ static void Mumble_RunFrame()
 
 	if (inDevice != curInDevice)
 	{
+		trace(__FUNCTION__ ": capture device changed in GTA code, changing to index %d (last %d)\n", inDevice, curInDevice);
+
 		enumCtx.cur = -1;
 		enumCtx.target = inDevice;
 		DirectSoundCaptureEnumerateW(enumCb, &enumCtx);
 
+		trace(__FUNCTION__ ": this device index is GUID %s\n", enumCtx.guidStr);
+
 		g_mumbleClient->SetInputDevice(enumCtx.guidStr);
 
 		curInDevice = inDevice;
+
+		trace(__FUNCTION__ ": device should've changed by now!\n");
 	}
 
 	if (outDevice != curOutDevice)
@@ -339,6 +347,63 @@ static bool(*g_origIsAnyoneTalking)(void*);
 static bool _isAnyoneTalking(void* mgr)
 {
 	return (g_origIsAnyoneTalking(mgr) || g_mumbleClient->IsAnyoneTalking());
+}
+
+static bool(*g_origIsPlayerTalking)(void*, void*);
+
+static std::bitset<256> g_talkers;
+
+static bool _isPlayerTalking(void* mgr, char* playerData)
+{
+	if (g_origIsPlayerTalking(mgr, playerData))
+	{
+		return true;
+	}
+
+	// 1290
+	auto playerInfo = playerData - 32 - 48 - 16;
+
+	// get the ped
+	auto ped = *(char**)(playerInfo + 456);
+	
+	if (ped)
+	{
+		auto netObj = *(uint8_t**)(ped + 208);
+
+		if (netObj)
+		{
+			// actually: netobj owner
+			auto index = netObj[73];
+
+			if (g_talkers.test(index))
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+static bool(*g_origGetPlayerHasHeadset)(void*, void*);
+
+static bool _getPlayerHasHeadset(void* mgr, void* plr)
+{
+	if (g_mumble.connected)
+	{
+		return true;
+	}
+
+	return g_origGetPlayerHasHeadset(mgr, plr);
+}
+
+static float(*g_origGetLocalAudioLevel)(void* mgr, int localIdx);
+
+static float _getLocalAudioLevel(void* mgr, int localIdx)
+{
+	float mumbleLevel = (g_mumble.connected) ? g_mumbleClient->GetInputAudioLevel() : 0.0f;
+
+	return std::max(g_origGetLocalAudioLevel(mgr, localIdx), mumbleLevel);
 }
 
 static void(*g_origInitVoiceEngine)(void* engine, char* config);
@@ -392,8 +457,6 @@ static HookFunction hookFunction([]()
 	g_cameraPos = hook::get_address<float*>(hook::get_pattern("87 AA 00 00 00 66 0F 6E D0 F3 0F 5C 05", 13));
 
 	g_actorPos = hook::get_address<float*>(hook::get_pattern("BB 00 00 40 00 48 89 7D F8 89 1D", -4)) + 12;
-
-	static std::bitset<256> g_talkers;
 
 	rage::scrEngine::OnScriptInit.Connect([]()
 	{
@@ -492,13 +555,16 @@ static HookFunction hookFunction([]()
 			{
 				float dist = context.GetArgument<float>(0);
 
-				g_mumbleClient->SetAudioDistance(dist == 0.0f ? FLT_MAX : (dist / 3.0f));
+				g_mumbleClient->SetAudioDistance(dist == 0.0f ? FLT_MAX : dist);
 			}
 		});
 	});
 
 	MH_Initialize();
 	MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? 84 C0 74 26 66 0F 6E 35")), _isAnyoneTalking, (void**)&g_origIsAnyoneTalking);
+	MH_CreateHook(hook::get_call(hook::get_pattern("48 8B D0 E8 ? ? ? ? 40 8A F0 8B 8F", 3)), _isPlayerTalking, (void**)&g_origIsPlayerTalking);
 	MH_CreateHook(hook::get_call(hook::get_pattern("89 44 24 58 0F 29 44 24 40 E8", 9)), _filterVoiceChatConfig, (void**)&g_origInitVoiceEngine);
+	MH_CreateHook(hook::get_pattern("48 8B F8 48 85 C0 74 33 48 83 C3 30", -0x19), _getLocalAudioLevel, (void**)&g_origGetLocalAudioLevel);
+	MH_CreateHook(hook::get_pattern("80 78 05 00 B9", -0x1B), _getPlayerHasHeadset, (void**)&g_origGetPlayerHasHeadset);
 	MH_EnableHook(MH_ALL_HOOKS);
 });
