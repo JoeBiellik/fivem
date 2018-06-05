@@ -10,6 +10,6 @@ environment:
   - IS_FXSERVER: 0
   - IS_FXSERVER: 1
 build_script:
-- ps: .\code\tools\ci\build.ps1 -DontUpload $false -SaveDir C:\save
+- ps: .\code\tools\ci\build.ps1 -DontBuild $true -DontUpload $false -SaveDir C:\save
 artifacts:
 - path: caches/

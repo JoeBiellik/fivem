@@ -379,6 +379,8 @@ if (!$DontUpload) {
     iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/appveyor/secure-file/master/install.ps1'))
     appveyor-tools\secure-file -decrypt $WorkRootDir\tools\ci\key.ppk.enc -secret $env:SSH_KEY
 
+    dir
+
     C:\cygwin64\bin\rsync -r -a -v -e 'C:\cygwin64\bin\ssh -o StrictHostKeyChecking=no -i $WorkRootDir\tools\ci\key.ppk' $BaseRoot/upload/ $env:SSH_TARGET
     Invoke-WebHook "Built and uploaded a new $env:CI_PROJECT_NAME version ($GameVersion) to $UploadBranch! Go and test it!"
 }
