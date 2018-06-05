@@ -352,25 +352,6 @@ if (!$DontBuild -and !$IsServer) {
 
     Invoke-Expression "& $WorkRootDir\tools\ci\xz.exe -9 CitizenFX.exe"
 
-    Invoke-WebRequest -Method POST -UseBasicParsing "https://crashes.fivem.net/management/add-version/1.3.0.$GameVersion"
-
-    $uri = 'https://sentry.fivem.net/api/0/organizations/citizenfx/releases/'
-    $json = @{
-    	version = "1.3.0.$GameVersion"
-    	refs = @(
-    		@{
-    			repository = 'citizenfx/fivem'
-    			commit = $env:CI_COMMIT_SHA
-    		}
-    	)
-    	projects = @("fivem-game")
-    } | ConvertTo-Json
-
-    $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
-    $headers.Add('Authorization', "Bearer $env:SENTRY_TOKEN")
-
-    Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $json -ContentType 'application/json'
-
     $LauncherLength = (Get-ItemProperty CitizenFX.exe.xz).Length
     "$LauncherVersion $LauncherLength" | Out-File -Encoding ascii version.txt
 }
