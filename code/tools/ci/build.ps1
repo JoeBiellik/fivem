@@ -395,18 +395,7 @@ if (!$DontUpload) {
     $BaseRoot = (Split-Path -Leaf $WorkDir)
     Set-Location (Split-Path -Parent $WorkDir)
 
-    rsync -r -a -v -e "$env:RSH_COMMAND" $BaseRoot/upload/ $env:SSH_TARGET
+    "$env:SSH_KEY" | Out-File -Encoding ascii $WorkDir\key.ppk
+    rsync -r -a -v -e "ssh -i $WorkDir\key.ppk" $BaseRoot/upload/ $env:SSH_TARGET
     Invoke-WebHook "Built and uploaded a new $env:CI_PROJECT_NAME version ($GameVersion) to $UploadBranch! Go and test it!"
-
-    # clear cloudflare cache
-    $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
-    $headers.Add("X-Auth-Email", $env:CLOUDFLARE_EMAIL)
-    $headers.Add("X-Auth-Key", $env:CLOUDFLARE_KEY)
-
-    $uri = 'https://api.cloudflare.com/client/v4/zones/783470409082113ad973c9bb845b62e5/purge_cache'
-    $json = @{
-        purge_everything=$true
-    } | ConvertTo-Json
-
-    Invoke-RestMethod -Uri $uri -Method Delete -Headers $headers -Body $json -ContentType 'application/json'
 }
