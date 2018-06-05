@@ -376,7 +376,9 @@ if (!$DontUpload) {
     $BaseRoot = (Split-Path -Leaf $WorkDir)
     Set-Location (Split-Path -Parent $WorkDir)
 
-    "$env:SSH_KEY" | Out-File -Encoding ascii $WorkDir\key.ppk
-    rsync -r -a -v -e "ssh -i $WorkDir\key.ppk" $BaseRoot/upload/ $env:SSH_TARGET
+    iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/appveyor/secure-file/master/install.ps1'))
+    appveyor-tools\secure-file -decrypt $WorkRootDir\tools\ci\key.ppk.enc -secret $env:SSH_KEY
+
+    C:\cygwin64\bin\rsync -r -a -v -e 'C:\cygwin64\bin\ssh -o StrictHostKeyChecking=no -i $WorkRootDir\tools\ci\key.ppk' $BaseRoot/upload/ $env:SSH_TARGET
     Invoke-WebHook "Built and uploaded a new $env:CI_PROJECT_NAME version ($GameVersion) to $UploadBranch! Go and test it!"
 }
