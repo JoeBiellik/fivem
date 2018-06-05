@@ -380,6 +380,7 @@ if (!$DontUpload) {
     appveyor-tools\secure-file -decrypt $WorkRootDir\tools\ci\key.ppk.enc -secret $env:SSH_KEY
 
     dir
+    dir $WorkRootDir\tools\ci\
 
     C:\cygwin64\bin\rsync -r -a -v -e 'C:\cygwin64\bin\ssh -o StrictHostKeyChecking=no -i $WorkRootDir\tools\ci\key.ppk' $BaseRoot/upload/ $env:SSH_TARGET
     Invoke-WebHook "Built and uploaded a new $env:CI_PROJECT_NAME version ($GameVersion) to $UploadBranch! Go and test it!"
