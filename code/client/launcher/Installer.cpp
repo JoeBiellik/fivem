@@ -56,12 +56,12 @@ bool Install_PerformInstallation()
 	}
 
 	// the executable goes to the target
-	auto targetExePath = rootPath + L"\\FiveM.exe";
+	auto targetExePath = rootPath + L"\\GLG FiveM.exe";
 
 	// but only if it doesn't exist
 	if (GetFileAttributes(targetExePath.c_str()) != INVALID_FILE_ATTRIBUTES)
 	{
-		MessageBox(nullptr, L"FiveM is already installed. You should launch it through the shortcut in the Start menu.\nIf you want to create a portable installation, put FiveM.exe into an empty folder instead.", L"FiveM", MB_OK | MB_ICONINFORMATION);
+		MessageBox(nullptr, L"FiveM is already installed. You should launch it through the shortcut in the Start menu.\nIf you want to create a portable installation, put \"GLG FiveM.exe\" into an empty folder instead.", L"FiveM", MB_OK | MB_ICONINFORMATION);
 		return true;
 	}
 
