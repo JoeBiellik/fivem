@@ -242,7 +242,7 @@ if (!$DontBuild)
 
     Invoke-Expression "& $WorkRootDir\tools\ci\premake5 vs2017 --game=$GameName --builddir=$BuildRoot --bindir=$BinRoot"
 
-    $GameVersion = ((git rev-list HEAD | measure-object).Count * 10) + 1100000
+	$GameVersion = [int]$env:APPVEYOR_BUILD_NUMBER + 1100000
     $LauncherVersion = $GameVersion
 
     "#pragma once
@@ -268,7 +268,7 @@ if (!$DontBuild)
 }
 
 Set-Location $WorkRootDir
-$GameVersion = ((git rev-list HEAD | measure-object).Count * 10) + 1100000
+$GameVersion = [int]$env:APPVEYOR_BUILD_NUMBER + 1100000
 $LauncherVersion = $GameVersion
 
 if (!$DontBuild -and $IsServer) {
@@ -379,6 +379,6 @@ if (!$DontUpload) {
     iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/appveyor/secure-file/master/install.ps1'))
     appveyor-tools\secure-file -decrypt $WorkRootDir\tools\ci\key.ppk.enc -secret $env:SSH_KEY
 
-    C:\cygwin64\bin\rsync -rvhtu -e "C:\cygwin64\bin\ssh -o StrictHostKeyChecking=no -i $WorkRootDir\tools\ci\key.ppk" $BaseRoot/upload/ $env:SSH_TARGET
+    C:\cygwin64\bin\rsync -rvzhtu --delete -e "C:\cygwin64\bin\ssh -o StrictHostKeyChecking=no -i $WorkRootDir\tools\ci\key.ppk" $BaseRoot/upload/ $env:SSH_TARGET
     Invoke-WebHook "Built and uploaded a new $env:CI_PROJECT_NAME version ($GameVersion) to $UploadBranch! Go and test it!"
 }
