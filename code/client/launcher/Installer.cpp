@@ -38,7 +38,7 @@ static std::wstring GetRootPath()
 
 	if (!appDataPath.empty())
 	{
-		appDataPath += L"\\FiveM";
+		appDataPath += L"\\GLG FiveM";
 
 		CreateDirectory(appDataPath.c_str(), nullptr);
 	}
@@ -78,44 +78,44 @@ bool Install_PerformInstallation()
 	{
 		CoInitialize(NULL);
 
-		WRL::ComPtr<IShellLink> shellLink;
-		HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, (void**)shellLink.ReleaseAndGetAddressOf());
+		//WRL::ComPtr<IShellLink> shellLink;
+		//HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, (void**)shellLink.ReleaseAndGetAddressOf());
 
-		if (SUCCEEDED(hr))
-		{
-			shellLink->SetPath(targetExePath.c_str());
-			shellLink->SetDescription(L"FiveM is a modification framework for Grand Theft Auto V");
-			shellLink->SetIconLocation(targetExePath.c_str(), 0);
-			
-			WRL::ComPtr<IPersistFile> persist;
-			hr = shellLink.As(&persist);
+		//if (SUCCEEDED(hr))
+		//{
+		//	shellLink->SetPath(targetExePath.c_str());
+		//	shellLink->SetDescription(L"FiveM is a modification framework for Grand Theft Auto V");
+		//	shellLink->SetIconLocation(targetExePath.c_str(), 0);
+		//	
+		//	WRL::ComPtr<IPersistFile> persist;
+		//	hr = shellLink.As(&persist);
 
-			if (SUCCEEDED(hr))
-			{
-				persist->Save((GetFolderPath(FOLDERID_Programs) + L"\\FiveM.lnk").c_str(), TRUE);
-				persist->Save((GetFolderPath(FOLDERID_Desktop) + L"\\FiveM.lnk").c_str(), TRUE);
-			}
-		}
+		//	if (SUCCEEDED(hr))
+		//	{
+		//		persist->Save((GetFolderPath(FOLDERID_Programs) + L"\\FiveM.lnk").c_str(), TRUE);
+		//		persist->Save((GetFolderPath(FOLDERID_Desktop) + L"\\FiveM.lnk").c_str(), TRUE);
+		//	}
+		//}
 
-		// make the SP shortcut
-		hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, (void**)shellLink.ReleaseAndGetAddressOf());
+		//// make the SP shortcut
+		//hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, (void**)shellLink.ReleaseAndGetAddressOf());
 
-		if (SUCCEEDED(hr))
-		{
-			shellLink->SetPath(targetExePath.c_str());
-			shellLink->SetArguments(L"-sp");
-			shellLink->SetDescription(L"FiveM is a modification framework for Grand Theft Auto V");
-			shellLink->SetIconLocation(targetExePath.c_str(), -202);
+		//if (SUCCEEDED(hr))
+		//{
+		//	shellLink->SetPath(targetExePath.c_str());
+		//	shellLink->SetArguments(L"-sp");
+		//	shellLink->SetDescription(L"FiveM is a modification framework for Grand Theft Auto V");
+		//	shellLink->SetIconLocation(targetExePath.c_str(), -202);
 
-			WRL::ComPtr<IPersistFile> persist;
-			hr = shellLink.As(&persist);
+		//	WRL::ComPtr<IPersistFile> persist;
+		//	hr = shellLink.As(&persist);
 
-			if (SUCCEEDED(hr))
-			{
-				persist->Save((GetFolderPath(FOLDERID_Programs) + L"\\FiveM Singleplayer.lnk").c_str(), TRUE);
-				persist->Save((GetFolderPath(FOLDERID_Desktop) + L"\\FiveM Singleplayer.lnk").c_str(), TRUE);
-			}
-		}
+		//	if (SUCCEEDED(hr))
+		//	{
+		//		persist->Save((GetFolderPath(FOLDERID_Programs) + L"\\FiveM Singleplayer.lnk").c_str(), TRUE);
+		//		persist->Save((GetFolderPath(FOLDERID_Desktop) + L"\\FiveM Singleplayer.lnk").c_str(), TRUE);
+		//	}
+		//}
 
 		CoUninitialize();
 	}
@@ -157,50 +157,50 @@ bool Install_PerformInstallation()
 bool Install_RunInstallMode()
 {
 	// if we're already installed 'sufficiently', this isn't a new install
-	if (GetFileAttributes(MakeRelativeCitPath(L"CoreRT.dll").c_str()) != INVALID_FILE_ATTRIBUTES ||
-		GetFileAttributes(MakeRelativeCitPath(L"citizen-resources-client.dll").c_str()) != INVALID_FILE_ATTRIBUTES ||
-		GetFileAttributes(MakeRelativeCitPath(L"CitizenFX.ini").c_str()) != INVALID_FILE_ATTRIBUTES ||
-		GetFileAttributes(MakeRelativeCitPath(L"FiveM.installroot").c_str()) != INVALID_FILE_ATTRIBUTES)
-	{
-		using namespace std::string_literals;
+	//if (GetFileAttributes(MakeRelativeCitPath(L"CoreRT.dll").c_str()) != INVALID_FILE_ATTRIBUTES ||
+	//	GetFileAttributes(MakeRelativeCitPath(L"citizen-resources-client.dll").c_str()) != INVALID_FILE_ATTRIBUTES ||
+	//	GetFileAttributes(MakeRelativeCitPath(L"CitizenFX.ini").c_str()) != INVALID_FILE_ATTRIBUTES ||
+	//	GetFileAttributes(MakeRelativeCitPath(L"FiveM.installroot").c_str()) != INVALID_FILE_ATTRIBUTES)
+	//{
+	//	using namespace std::string_literals;
 
-		wchar_t exePath[260];
-		GetModuleFileName(GetModuleHandle(nullptr), exePath, _countof(exePath));
+	//	wchar_t exePath[260];
+	//	GetModuleFileName(GetModuleHandle(nullptr), exePath, _countof(exePath));
 
-		std::wstring exeName = exePath;
+	//	std::wstring exeName = exePath;
 
-		wcsrchr(exePath, L'\\')[0] = L'\0';
+	//	wcsrchr(exePath, L'\\')[0] = L'\0';
 
-		std::wstring linkPath = exePath + L"\\FiveM Singleplayer.lnk"s;
+	//	std::wstring linkPath = exePath + L"\\FiveM Singleplayer.lnk"s;
 
-		if (GetFileAttributes(linkPath.c_str()) == INVALID_FILE_ATTRIBUTES)
-		{
-			CoInitialize(NULL);
+	//	if (GetFileAttributes(linkPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+	//	{
+	//		CoInitialize(NULL);
 
-			WRL::ComPtr<IShellLink> shellLink;
-			HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, (void**)shellLink.ReleaseAndGetAddressOf());
+	//		WRL::ComPtr<IShellLink> shellLink;
+	//		HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, (void**)shellLink.ReleaseAndGetAddressOf());
 
-			if (SUCCEEDED(hr))
-			{
-				shellLink->SetPath(exeName.c_str());
-				shellLink->SetArguments(L"-sp");
-				shellLink->SetDescription(L"FiveM is a modification framework for Grand Theft Auto V");
-				shellLink->SetIconLocation(exeName.c_str(), -202);
+	//		if (SUCCEEDED(hr))
+	//		{
+	//			shellLink->SetPath(exeName.c_str());
+	//			shellLink->SetArguments(L"-sp");
+	//			shellLink->SetDescription(L"FiveM is a modification framework for Grand Theft Auto V");
+	//			shellLink->SetIconLocation(exeName.c_str(), -202);
 
-				WRL::ComPtr<IPersistFile> persist;
-				hr = shellLink.As(&persist);
+	//			WRL::ComPtr<IPersistFile> persist;
+	//			hr = shellLink.As(&persist);
 
-				if (SUCCEEDED(hr))
-				{
-					persist->Save(linkPath.c_str(), TRUE);
-				}
-			}
+	//			if (SUCCEEDED(hr))
+	//			{
+	//				persist->Save(linkPath.c_str(), TRUE);
+	//			}
+	//		}
 
-			CoUninitialize();
-		}
+	//		CoUninitialize();
+	//	}
 
-		return false;
-	}
+	//	return false;
+	//}
 
 	// if we're running from a folder that 'smells' like a downloads folder, run as installer
 	static HostSharedData<CfxState> hostData("CfxInitState");

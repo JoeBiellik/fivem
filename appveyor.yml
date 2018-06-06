@@ -5,7 +5,7 @@ environment:
   SSH_KEY:
     secure: Z6BxVIxMwVrlm3Vf5hZlKhp+urDLwDFwEdNjO0gM7c16NfwbtA9uDVtslhNXI++7
   SSH_TARGET:
-    secure: wjxzbjO79sKwadPBde6XA2UwTzdq6tFQuxJLCM0/OgftaHHqiEv2ELaiKWym4+Bp
+    secure: wjxzbjO79sKwadPBde6XAwzAYj/8RW7yfeuAVb/qRBMcFgQJ8sdu85BINTu1iPLV
   matrix:
   - IS_FXSERVER: 0
   - IS_FXSERVER: 1
