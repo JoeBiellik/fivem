@@ -13,7 +13,7 @@ env:
     - secure: "mRIuppBgk21l/TN0wo962A6XE8OKKUIShV/T7UDIv7o6c3btXZggC2m3LaCxHJphwjLV4VsZJ5lgysyz7mjfiZLxL/6+ncfArXqUwqoeWayTObUGvs6P7mzaSEGs5NjKb4vKBljcpyzAC6cBf603yESxaccHuxU/ZyxIBseyCUx18an1ItTViUfSIlFBiEJ1IB57HXmf0U/IOfF+Hqj8WnvVfQDOZvNjbt+vLjnt8tzeNXDrj9IquI9dQr8MHXq2ZBvBnI3uDJhgU4HWf8hQWNlWcHzQygU/eDZipw8QpkJWdqpLUQJtogcT3bVIZ0qaYAhUop57Ugf/qBvrDlikrgwJGICAZISht5teXYwdjCeQnA5ufL1sG3Q+SPcZqmj78EzCVOUwyvkTJqTLVB3PpEbi20WTpETxfGXGEeOmzn8sQfB0jg+NaLN5yp9v0i5QAinqatZ2dULPrES+8lCsHWoJ9qoTz+xNQWTXzBeTDxn2ncuDe0inNpVEib/tZjN+ANgdNnldynDz+EF7ITVF9dHN5eiavqT7sBMwPiBdttvqWRDpmW+79RuYN8S578OzfXSCl9jiWY9ymLSH2LlM5WRp8rN2bb3z4nNoGzUkO0tiIHp9svXPPJ0xztZshJrxqfM+t1ZMiiiOZUtWHX1AjgcxlY8UmH+PEJqX1JIpNX8="
 
 script:
-  - git submodule update --init
+  - travis_wait 30 git submodule update --init
   - curl -O -L https://github.com/grammarly/rocker/releases/download/1.3.0/rocker_linux_amd64.tar.gz
   - tar xvf rocker_linux_amd64.tar.gz
   - cd code/
