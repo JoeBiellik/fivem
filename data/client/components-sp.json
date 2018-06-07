@@ -29,5 +29,7 @@
 	"scripting:gta",
 	"handling-loader:five",
 	"scripthookv",
-	"citizen:resources:core"
+	"citizen:resources:core",
+	"scrbind:base",
+	"citizen:scripting:core"
 ]
