@@ -2,13 +2,11 @@ version: 1.0.{build}
 image: Visual Studio 2017
 clone_depth: 1
 environment:
+  IS_FXSERVER: 0
   SSH_KEY:
     secure: Z6BxVIxMwVrlm3Vf5hZlKhp+urDLwDFwEdNjO0gM7c16NfwbtA9uDVtslhNXI++7
   SSH_TARGET:
     secure: wjxzbjO79sKwadPBde6XAwzAYj/8RW7yfeuAVb/qRBMcFgQJ8sdu85BINTu1iPLV
-  matrix:
-  - IS_FXSERVER: 0
-  - IS_FXSERVER: 1
 build_script:
 - ps: .\code\tools\ci\build.ps1 -DontUpload $false -SaveDir C:\save
 artifacts:
