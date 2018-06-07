@@ -314,9 +314,14 @@ if (!$DontBuild -and !$IsServer) {
 
     Pop-Location
 
+    tree -F $WorkDir\vendor\cef\Release\
+    tree -F $WorkDir\caches\fivereborn\bin\
+
     Copy-Item -Force -Recurse $WorkDir\vendor\cef\Release\*.dll $WorkDir\caches\fivereborn\bin\
     Copy-Item -Force -Recurse $WorkDir\vendor\cef\Release\*.bin $WorkDir\caches\fivereborn\bin\
 
+    tree -F $WorkDir\caches\fivereborn\bin\
+	
     New-Item -ItemType Directory -Force $WorkDir\caches\fivereborn\bin\cef
 
     Copy-Item -Force -Recurse $WorkDir\vendor\cef\Resources\icudtl.dat $WorkDir\caches\fivereborn\bin\
