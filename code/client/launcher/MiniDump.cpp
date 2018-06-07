@@ -578,7 +578,7 @@ void InitializeDumpServer(int inheritedHandle, int parentPid)
 
 		std::wstring fpath = MakeRelativeCitPath(L"CitizenFX.ini");
 
-		bool uploadCrashes = true;
+		bool uploadCrashes = false;
 
 		if (GetFileAttributes(fpath.c_str()) != INVALID_FILE_ATTRIBUTES)
 		{
